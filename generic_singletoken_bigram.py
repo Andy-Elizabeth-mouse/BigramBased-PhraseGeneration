@@ -8,7 +8,7 @@ excludes = ["<s>", "</s>", "。", "，", "、", "：", "“", "”", "？"]
 class GenericSingleTokenBigramModel():
     def __init__(self) -> None:
         self.estimator = estimator = lambda fdist, bins: MLEProbDist(fdist)
-        self.raw_data = self.load_data("宋词三百首.json", "paragraphs")
+        self.raw_data = self.load_data("nameproj/gushiwen1.json", "body")
         self.cleaned_tokens = self.clean_token(self.raw_data)
         self.unigrams = self.build_unigrams(self.cleaned_tokens)
         self.bigrams = self.build_bigrams(self.cleaned_tokens)
@@ -16,11 +16,11 @@ class GenericSingleTokenBigramModel():
     def load_data(self, data_file: str, data_content_tag: str) -> list:
         with open(data_file, 'r', encoding="utf8") as raw:
             data = json.load(raw)
-            contents = [content[data_content_tag] for content in data]
+            contents = [item[data_content_tag] for content in data for item in data[content]]
         return contents
 
     def clean_token(self, contents: list) -> list:
-        tokens = [item for sublist in contents for item in sublist]
+        tokens = [item for item in contents]
         cleaned_tokens = []
         for token in tokens:
             cleaned_token = []
@@ -36,6 +36,8 @@ class GenericSingleTokenBigramModel():
     def build_bigrams(self, tokens: list) -> FreqDist:
         bigrams = []
         for token in tokens:
+            if token == '':
+                continue
             token_bigrams = []
             for i in range(len(token)):
                 if i == 0:
@@ -57,6 +59,8 @@ class GenericSingleTokenBigramModel():
     def build_unigrams(self, tokens: list) -> FreqDist:
         unigrams = []
         for token in tokens:
+            if token == '':
+                continue
             token_unigrams = []
             for char in token:
                 token_unigrams.append(char)
@@ -73,7 +77,11 @@ class GenericSingleTokenBigramModel():
         Idea: choose a unigram from seen unigrams, go to bigrams which start with this unigram, and sample a "second char" from the bigrams? 
         """
         # determine first char
-        chosen_unigram = None
+        chosen_unigram = self.generate_first()
+        # determine second char
+        return chosen_unigram + self.generate_next(chosen_unigram)
+    
+    def generate_first(self) -> str:
         p = random.random()
         # print("random p is: " + str(p))
         p_cur = p
@@ -84,25 +92,23 @@ class GenericSingleTokenBigramModel():
             # print(p_cur)
             if p_cur <= 0:
                 # return unigram  # shows that this part works
-                chosen_unigram = unigram
-                break
-        #     break
-        # return chosen_unigram
-        if chosen_unigram is None:
-            print("Unigram probability fails to determine a proper first character, randomly sampling...")
-            chosen_unigram = random.choice(self.unigrams)
-        # determine second char
+                return unigram
+        print("Unigram probability fails to determine a proper first character, randomly sampling...")
+        return random.choice(self.unigrams)
+    
+    def generate_next(self, previous_char: str):
+        previous_char = previous_char[-1]
         p = random.random()
         p_cur = p
-        related_bigrams, sum_of_related_bigram_probs = self.bigrams_starting_with(chosen_unigram)
+        related_bigrams, sum_of_related_bigram_probs = self.bigrams_starting_with(previous_char)
         # TODO: need to normalize for these bigrams as well! 
         for bigram in related_bigrams:
             bi_p = self.bigrams.freq(bigram) / sum_of_related_bigram_probs
             p_cur -= bi_p
             if p_cur <= 0:
-                return bigram
-        print("Bigram probability fails to determine a proper bigram for the leading unigram " + chosen_unigram + ", randomly selecting from related bigrams...")
-        return random.choice(related_bigrams)
+                return bigram[-1]
+        print("Bigram probability fails to determine a proper bigram for the leading unigram " + previous_char + ", randomly selecting from related bigrams...")
+        return random.choice(related_bigrams)[-1]
     
     def bigrams_starting_with(self, leading_char: str):
         wanted_bigrams = []
